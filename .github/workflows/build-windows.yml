@@ -72,13 +72,16 @@ jobs:
             "$portable/MonitorDeNoticias.exe",
             "$portable/app",
             "$portable/runtime",
-            "$portable/runtime/bin/java.exe",
             "$portable/runtime/bin/server/jvm.dll"
           )
           foreach ($item in $required) {
             if (-not (Test-Path $item)) { throw "Arquivo obrigatório ausente: $item" }
           }
-          Write-Host 'Estrutura do runtime portátil validada.'
+          # O runtime do jpackage é uma imagem jlink e normalmente NÃO contém java.exe.
+          # O launcher .exe carrega diretamente a JVM embarcada (jvm.dll).
+          Write-Host 'Estrutura do runtime portátil validada (jvm.dll presente).'
+          Get-ChildItem -Path "$portable/runtime/bin" -File | Select-Object Name, Length
+          Get-ChildItem -Path "$portable/runtime/bin/server" -File | Select-Object Name, Length
 
       - name: Testar abertura do executável
         shell: pwsh
@@ -88,7 +91,10 @@ jobs:
           $p = Start-Process -FilePath $exe -WorkingDirectory $portable -PassThru
           Start-Sleep -Seconds 12
           if ($p.HasExited) {
-            throw "O executável encerrou durante o teste de inicialização. ExitCode=$($p.ExitCode)"
+            Write-Host "O executável encerrou durante o teste de inicialização. ExitCode=$($p.ExitCode)"
+            Write-Host "Conteúdo de runtime/bin/server:"
+            Get-ChildItem -Path (Join-Path $portable 'runtime/bin/server') -Force | Format-Table -AutoSize
+            throw "Falha real ao iniciar o executável portátil. ExitCode=$($p.ExitCode)"
           }
           Stop-Process -Id $p.Id -Force
           Write-Host 'Executável iniciou usando o runtime embutido.'
