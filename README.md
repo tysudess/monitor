@@ -53,7 +53,7 @@ scripts\\build-windows.bat
 ou:
 
 ```bat
-gradlew.bat clean test packageDistributionForCurrentOS
+gradlew.bat clean test createDistributable
 ```
 
 Os artefatos ficam em `build/compose/binaries/`.
@@ -77,7 +77,7 @@ O repositório inclui workflows em `.github/workflows/`:
 
 - `ci.yml`: executa `clean test` em Ubuntu a cada push/pull request.
 - `build-windows.yml`: compila e publica os binários Windows como artefato do GitHub Actions.
-- `release-windows.yml`: ao criar uma tag `v*` (por exemplo `v4.0.2`), compila no Windows, cria `MonitorDeNoticias-Windows.zip` e publica uma GitHub Release. Também pode ser iniciado manualmente pela aba **Actions**.
+- `release-windows.yml`: ao criar uma tag `v*` (por exemplo `v4.0.2`), compila no Windows, testa o executável portátil, cria **um único** `MonitorDeNoticias-Portable-Windows.zip` e publica uma GitHub Release. Também pode ser iniciado manualmente pela aba **Actions**.
 
 Para gerar uma release automática:
 
@@ -87,3 +87,11 @@ git push origin v4.0.2
 ```
 
 Depois acompanhe a execução em **GitHub > Actions > Release Windows**. O ZIP também ficará disponível na página **Releases** do repositório.
+
+## Windows Portable (corrigido)
+
+A entrega Windows deste repositório é somente **Portable**. O GitHub Actions usa `createDistributable`, preserva a imagem criada pelo Compose/jpackage e testa o `MonitorDeNoticias.exe` no próprio runner antes de publicar.
+
+Use **Actions > Build Windows Portable > Run workflow**. Ao concluir em verde, baixe o artifact `MonitorDeNoticias-Portable-Windows`. Basta extrair e abrir `MonitorDeNoticias.exe`; não é necessário instalar Java.
+
+Não mova somente o `.exe`: as pastas `app/` e `runtime/` fazem parte da aplicação portátil.

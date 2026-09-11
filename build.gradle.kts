@@ -1,5 +1,3 @@
-import org.jetbrains.compose.desktop.application.dsl.TargetFormat
-
 plugins {
     kotlin("jvm") version "2.0.21"
     id("org.jetbrains.compose") version "1.7.3"
@@ -7,7 +5,7 @@ plugins {
 }
 
 group = "br.com.monitordenoticias"
-version = "4.0.2-cleanroom"
+version = "4.0.2-portable"
 
 kotlin { jvmToolchain(17) }
 
@@ -25,12 +23,16 @@ compose.desktop {
     application {
         mainClass = "br.com.monitordenoticias.desktop.MainKt"
         nativeDistributions {
-            targetFormats(TargetFormat.Exe, TargetFormat.Msi, TargetFormat.AppImage, TargetFormat.Deb)
+            // O projeto publica somente a imagem portátil criada pelo jpackage/Compose.
+            // Não geramos MSI nem instalador EXE.
             packageName = "MonitorDeNoticias"
             packageVersion = "4.0.2"
             description = "Monitor de notícias e vídeos com termos, demandas, histórico e automação"
             vendor = "Clean-room implementation"
-            windows { menuGroup = "Monitor de Notícias"; shortcut = true; console = false; perUserInstall = true }
+            windows {
+                console = false
+                perUserInstall = true
+            }
         }
     }
 }
