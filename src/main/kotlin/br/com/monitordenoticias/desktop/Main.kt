@@ -10,11 +10,77 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.*
 import br.com.monitordenoticias.android.*
 import java.io.File
+import java.io.PrintWriter
+import java.io.StringWriter
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import javax.swing.JOptionPane
+import kotlin.system.exitProcess
 
-fun main()=application{val base=File(System.getProperty("user.dir"));val c=remember{DesktopController(base)};Window(onCloseRequest={c.close();exitApplication()},title="Monitor de Notícias v4.0.2 - Clean Room"){MaterialTheme{App(c)}}}
+fun main(args: Array<String>) {
+    val base = resolvePortableBaseDir()
+    try {
+        // Força o carregamento do driver durante o smoke test e também produz
+        // um erro legível caso uma dependência do SQLite esteja ausente.
+        Class.forName("org.sqlite.JDBC")
+
+        if (args.contains("--smoke-test")) {
+            val controller = DesktopController(base)
+            controller.close()
+            File(base, "data/smoke-test-ok.txt").apply {
+                parentFile.mkdirs()
+                writeText("OK ${System.currentTimeMillis()}")
+            }
+            exitProcess(0)
+        }
+
+        application {
+            val c = remember { DesktopController(base) }
+            Window(
+                onCloseRequest = { c.close(); exitApplication() },
+                title = "Monitor de Notícias v4.0.2 - Clean Room"
+            ) {
+                MaterialTheme { App(c) }
+            }
+        }
+    } catch (t: Throwable) {
+        writeStartupError(base, t)
+        runCatching {
+            JOptionPane.showMessageDialog(
+                null,
+                "Falha ao iniciar o Monitor de Notícias.\n\n${t.javaClass.simpleName}: ${t.message ?: "sem mensagem"}\n\nDetalhes em data\\logs\\startup-error.log",
+                "MonitorDeNoticias.exe",
+                JOptionPane.ERROR_MESSAGE
+            )
+        }
+        exitProcess(1)
+    }
+}
+
+private fun resolvePortableBaseDir(): File {
+    val appPath = System.getProperty("jpackage.app-path")?.takeIf { it.isNotBlank() }
+    if (appPath != null) return File(appPath).absoluteFile.parentFile
+    return File(System.getProperty("user.dir")).absoluteFile
+}
+
+private fun writeStartupError(base: File, t: Throwable) {
+    runCatching {
+        val dir = File(base, "data/logs").apply { mkdirs() }
+        val sw = StringWriter()
+        t.printStackTrace(PrintWriter(sw))
+        File(dir, "startup-error.log").writeText(
+            "MonitorDeNoticias startup failure\n" +
+                "java.version=${System.getProperty("java.version")}\n" +
+                "os.name=${System.getProperty("os.name")}\n" +
+                "os.arch=${System.getProperty("os.arch")}\n" +
+                "user.dir=${System.getProperty("user.dir")}\n" +
+                "jpackage.app-path=${System.getProperty("jpackage.app-path")}\n\n" +
+                sw.toString()
+        )
+    }
+}
+
 @Composable fun App(c:DesktopController){var tab by remember{mutableStateOf("INÍCIO")};Row(Modifier.fillMaxSize()){Column(Modifier.width(190.dp).fillMaxHeight().background(MaterialTheme.colors.surface).padding(12.dp)){Text("MONITOR DE NOTÍCIAS",style=MaterialTheme.typography.h6);Spacer(Modifier.height(16.dp));listOf("INÍCIO","NOTÍCIAS","VÍDEOS","TERMOS","DEMANDAS","FONTES","HISTÓRICO","CONFIGURAÇÕES").forEach{Button(onClick={tab=it},modifier=Modifier.fillMaxWidth().padding(vertical=3.dp)){Text(it)}}};Box(Modifier.fillMaxSize().padding(16.dp)){when(tab){"INÍCIO"->Home(c);"NOTÍCIAS"->NewsScreen(c);"VÍDEOS"->VideosScreen(c);"TERMOS"->TermsScreen(c);"DEMANDAS"->DemandsScreen(c);"FONTES"->SourcesScreen(c);"HISTÓRICO"->HistoryScreen(c);else->SettingsScreen(c)}}}}
 @Composable fun Home(c:DesktopController){Column{Text("Painel",style=MaterialTheme.typography.h4);Spacer(Modifier.height(10.dp));Text("Notícias salvas: ${c.newsHistory.size}");Text("Vídeos salvos: ${c.totalStoredVideos}");Text("Vídeos capturados hoje: ${c.capturedTodayVideos}");Text("Demandas: ${c.demands.size}");Spacer(Modifier.height(12.dp));Text(c.status);Text(c.videoStatus);if(c.unstableVideoSources.isNotEmpty())Text("Fontes de vídeo com falha: ${c.unstableVideoSources.size}")}}
 @Composable fun NewsScreen(c:DesktopController){Column{Row{Button(onClick={c.searchNews() },enabled=!c.newsBusy){Text(if(c.newsBusy)"PESQUISANDO..." else "PESQUISAR ÚLTIMAS 24H")};Spacer(Modifier.width(12.dp));Text(c.status)};Spacer(Modifier.height(8.dp));LazyColumn{items(c.news.ifEmpty{c.newsHistory}){n->Card(Modifier.fillMaxWidth().padding(vertical=4.dp),elevation=2.dp){Column(Modifier.padding(10.dp)){Text(n.title,style=MaterialTheme.typography.subtitle1);Text("${n.source} • ${fmt(n.date)}");if(n.matchedTerm!=null)Text("Termo: ${n.matchedTerm}");if(UrlPolicy.canonicalizeUrl(n.link) in c.newsNewLinks)Text("NOVO");TextButton(onClick={c.openUrl(n.link)}){Text("ABRIR")}}}}}}}

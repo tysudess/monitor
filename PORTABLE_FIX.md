@@ -1,19 +1,12 @@
-# Correção Portable — revisão 2
+# Correção Portable v3
 
-Esta revisão corrige a validação do runtime gerado pelo Compose Desktop/jpackage.
+Esta revisão corrige a causa provável do diálogo **Failed to launch JVM** no início do aplicativo.
 
-## Correção principal
-
-O workflow anterior exigia `runtime/bin/java.exe`. Essa exigência é incorreta para uma imagem `jlink` criada pelo `jpackage`: o launcher Windows carrega diretamente a JVM embarcada por `runtime/bin/server/jvm.dll`.
-
-Agora o CI:
-
-1. executa os testes;
-2. gera `createDistributable` no Windows;
-3. preserva a imagem criada pelo Compose/jpackage sem remontar `app/` ou `runtime/`;
-4. valida o EXE, `app/`, `runtime/` e `jvm.dll`;
-5. abre o `MonitorDeNoticias.exe` no runner Windows;
-6. somente publica se o processo permanecer aberto;
-7. entrega somente o formato portátil.
-
-A Release continua criando exatamente um `MonitorDeNoticias-Portable-Windows.zip`.
+- adiciona explicitamente `slf4j-api` e `slf4j-nop` 1.7.36, exigidos pelo `sqlite-jdbc` durante a inicialização;
+- força `Class.forName("org.sqlite.JDBC")` antes de abrir a interface;
+- usa `jpackage.app-path` para localizar a pasta portátil corretamente;
+- registra qualquer exceção de startup em `data/logs/startup-error.log`;
+- inclui um `--smoke-test` que instancia os bancos e o controlador;
+- o workflow executa o próprio EXE com `--smoke-test` e só publica se ele retornar código 0;
+- inclui DLLs de runtime MSVC do JDK quando disponíveis;
+- continua gerando somente um artefato Portable, sem instalador.

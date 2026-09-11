@@ -13,6 +13,10 @@ dependencies {
     implementation(compose.desktop.currentOs)
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0")
     implementation("org.xerial:sqlite-jdbc:3.46.1.3")
+    // sqlite-jdbc usa SLF4J na inicialização. A dependência é opcional no POM,
+    // então precisamos empacotá-la explicitamente no app portátil.
+    implementation("org.slf4j:slf4j-api:1.7.36")
+    implementation("org.slf4j:slf4j-nop:1.7.36")
     implementation("org.jsoup:jsoup:1.18.3")
     implementation("net.java.dev.jna:jna:5.14.0")
     implementation("net.java.dev.jna:jna-platform:5.14.0")
