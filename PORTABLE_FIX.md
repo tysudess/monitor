@@ -1,18 +1,19 @@
-# Correção Windows Portable
+# Correção Portable — revisão 2
 
-Esta versão foi ajustada para publicar somente a distribuição portátil.
+Esta revisão corrige a validação do runtime gerado pelo Compose Desktop/jpackage.
 
-## Mudanças
+## Correção principal
 
-- `createDistributable` substitui `packageDistributionForCurrentOS`.
-- MSI e instalador EXE não fazem parte do fluxo de entrega.
-- `app/` e `runtime/` são preservados exatamente como o Compose/jpackage os gera.
-- O workflow valida `runtime/bin/java.exe` e `runtime/bin/server/jvm.dll`.
-- O workflow abre `MonitorDeNoticias.exe` por 12 segundos no runner Windows antes de publicar.
-- Se o launcher encerrar imediatamente (por exemplo, `Failed to launch JVM`), o workflow falha e nenhum pacote defeituoso é entregue.
-- No workflow de build não há ZIP manual: o artifact do GitHub é a única compactação.
-- Na Release é criado apenas um `MonitorDeNoticias-Portable-Windows.zip`.
+O workflow anterior exigia `runtime/bin/java.exe`. Essa exigência é incorreta para uma imagem `jlink` criada pelo `jpackage`: o launcher Windows carrega diretamente a JVM embarcada por `runtime/bin/server/jvm.dll`.
 
-## Uso
+Agora o CI:
 
-Extraia o pacote inteiro. Execute `MonitorDeNoticias.exe` sem mover o EXE para fora da pasta. `app/` e `runtime/` devem permanecer ao lado dele.
+1. executa os testes;
+2. gera `createDistributable` no Windows;
+3. preserva a imagem criada pelo Compose/jpackage sem remontar `app/` ou `runtime/`;
+4. valida o EXE, `app/`, `runtime/` e `jvm.dll`;
+5. abre o `MonitorDeNoticias.exe` no runner Windows;
+6. somente publica se o processo permanecer aberto;
+7. entrega somente o formato portátil.
+
+A Release continua criando exatamente um `MonitorDeNoticias-Portable-Windows.zip`.
