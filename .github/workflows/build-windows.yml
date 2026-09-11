@@ -29,6 +29,7 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+          architecture: x64
 
       - name: Configurar Gradle 8.10.2
         uses: gradle/actions/setup-gradle@v4
@@ -43,28 +44,35 @@ jobs:
         shell: pwsh
         run: gradle --no-daemon createDistributable
 
-      - name: Preparar diretórios portáteis sem remontar runtime
+      - name: Preparar imagem portátil
         shell: pwsh
         run: |
           $portable = 'build/compose/binaries/main/app/MonitorDeNoticias'
-          if (-not (Test-Path $portable)) {
-            throw "Imagem portátil não encontrada em $portable"
-          }
-
-          New-Item -ItemType Directory -Force -Path "$portable/data" | Out-Null
+          if (-not (Test-Path $portable)) { throw "Imagem portátil não encontrada em $portable" }
           New-Item -ItemType Directory -Force -Path "$portable/data/preferences" | Out-Null
+          New-Item -ItemType Directory -Force -Path "$portable/data/logs" | Out-Null
           New-Item -ItemType Directory -Force -Path "$portable/logs" | Out-Null
+
+          # Inclui as DLLs do runtime MSVC ao lado do launcher e no runtime/bin.
+          # Isso torna o pacote mais independente de Visual C++ Redistributable externo.
+          $crt = @('msvcp140.dll','vcruntime140.dll','vcruntime140_1.dll')
+          foreach ($dll in $crt) {
+            $source = Join-Path $env:JAVA_HOME "bin/$dll"
+            if (Test-Path $source) {
+              Copy-Item $source (Join-Path $portable $dll) -Force
+              Copy-Item $source (Join-Path $portable "runtime/bin/$dll") -Force
+            }
+          }
 
           @'
           Monitor de Notícias 4.0.2 - Windows Portable
 
-          Não instale este programa. Extraia a pasta inteira e execute MonitorDeNoticias.exe.
-          Mantenha app\ e runtime\ ao lado do executável.
-          Os dados locais ficam em data\ e os logs em logs\.
-          Não mova somente o EXE para outra pasta.
+          Extraia a pasta inteira e execute MonitorDeNoticias.exe.
+          Não mova somente o EXE. As pastas app e runtime são obrigatórias.
+          O programa não exige Java instalado externamente.
           '@ | Set-Content -Path "$portable/README.txt" -Encoding UTF8
 
-      - name: Validar estrutura da JVM portátil
+      - name: Validar runtime portátil
         shell: pwsh
         run: |
           $portable = 'build/compose/binaries/main/app/MonitorDeNoticias'
@@ -72,43 +80,29 @@ jobs:
             "$portable/MonitorDeNoticias.exe",
             "$portable/app",
             "$portable/runtime",
+            "$portable/runtime/bin/jli.dll",
             "$portable/runtime/bin/server/jvm.dll"
           )
           foreach ($item in $required) {
             if (-not (Test-Path $item)) { throw "Arquivo obrigatório ausente: $item" }
           }
-          # O runtime do jpackage é uma imagem jlink e normalmente NÃO contém java.exe.
-          # O launcher .exe carrega diretamente a JVM embarcada (jvm.dll).
-          Write-Host 'Estrutura do runtime portátil validada (jvm.dll presente).'
-          Get-ChildItem -Path "$portable/runtime/bin" -File | Select-Object Name, Length
-          Get-ChildItem -Path "$portable/runtime/bin/server" -File | Select-Object Name, Length
 
-      - name: Testar abertura do executável
+      - name: Smoke test real do executável portátil
         shell: pwsh
         run: |
           $portable = (Resolve-Path 'build/compose/binaries/main/app/MonitorDeNoticias').Path
           $exe = Join-Path $portable 'MonitorDeNoticias.exe'
-          $p = Start-Process -FilePath $exe -WorkingDirectory $portable -PassThru
-          Start-Sleep -Seconds 12
-          if ($p.HasExited) {
-            Write-Host "O executável encerrou durante o teste de inicialização. ExitCode=$($p.ExitCode)"
-            Write-Host "Conteúdo de runtime/bin/server:"
-            Get-ChildItem -Path (Join-Path $portable 'runtime/bin/server') -Force | Format-Table -AutoSize
-            throw "Falha real ao iniciar o executável portátil. ExitCode=$($p.ExitCode)"
+          $p = Start-Process -FilePath $exe -ArgumentList '--smoke-test' -WorkingDirectory $portable -PassThru -Wait
+          if ($p.ExitCode -ne 0) {
+            $log = Join-Path $portable 'data/logs/startup-error.log'
+            if (Test-Path $log) { Get-Content $log }
+            throw "Smoke test falhou. ExitCode=$($p.ExitCode)"
           }
-          Stop-Process -Id $p.Id -Force
-          Write-Host 'Executável iniciou usando o runtime embutido.'
+          $marker = Join-Path $portable 'data/smoke-test-ok.txt'
+          if (-not (Test-Path $marker)) { throw 'O processo terminou sem criar o marcador de inicialização.' }
+          Remove-Item $marker -Force
+          Write-Host 'Smoke test concluído: SQLite, controlador e runtime iniciaram corretamente.'
 
-      - name: Listar conteúdo portátil
-        if: always()
-        shell: pwsh
-        run: |
-          $portable = 'build/compose/binaries/main/app/MonitorDeNoticias'
-          if (Test-Path $portable) {
-            Get-ChildItem -Path $portable -Recurse -File | Select-Object FullName, Length
-          }
-
-      # Não criamos um ZIP manual aqui. O GitHub gera UM único ZIP do artifact.
       - name: Publicar Windows Portable
         uses: actions/upload-artifact@v4
         with:
