@@ -1,4 +1,4 @@
-name: Build Windows
+name: Build Windows Portable
 
 on:
   workflow_dispatch:
@@ -15,8 +15,8 @@ permissions:
   contents: read
 
 jobs:
-  windows:
-    name: Gerar pacote Windows
+  windows-portable:
+    name: Gerar Windows Portable
     runs-on: windows-latest
     timeout-minutes: 45
 
@@ -39,25 +39,74 @@ jobs:
         shell: pwsh
         run: gradle --no-daemon clean test
 
-      - name: Gerar distribuição nativa Windows
+      - name: Gerar imagem portátil
         shell: pwsh
-        run: gradle --no-daemon packageDistributionForCurrentOS
+        run: gradle --no-daemon createDistributable
 
-      - name: Listar arquivos gerados
+      - name: Preparar diretórios portáteis sem remontar runtime
+        shell: pwsh
+        run: |
+          $portable = 'build/compose/binaries/main/app/MonitorDeNoticias'
+          if (-not (Test-Path $portable)) {
+            throw "Imagem portátil não encontrada em $portable"
+          }
+
+          New-Item -ItemType Directory -Force -Path "$portable/data" | Out-Null
+          New-Item -ItemType Directory -Force -Path "$portable/data/preferences" | Out-Null
+          New-Item -ItemType Directory -Force -Path "$portable/logs" | Out-Null
+
+          @'
+          Monitor de Notícias 4.0.2 - Windows Portable
+
+          Não instale este programa. Extraia a pasta inteira e execute MonitorDeNoticias.exe.
+          Mantenha app\ e runtime\ ao lado do executável.
+          Os dados locais ficam em data\ e os logs em logs\.
+          Não mova somente o EXE para outra pasta.
+          '@ | Set-Content -Path "$portable/README.txt" -Encoding UTF8
+
+      - name: Validar estrutura da JVM portátil
+        shell: pwsh
+        run: |
+          $portable = 'build/compose/binaries/main/app/MonitorDeNoticias'
+          $required = @(
+            "$portable/MonitorDeNoticias.exe",
+            "$portable/app",
+            "$portable/runtime",
+            "$portable/runtime/bin/java.exe",
+            "$portable/runtime/bin/server/jvm.dll"
+          )
+          foreach ($item in $required) {
+            if (-not (Test-Path $item)) { throw "Arquivo obrigatório ausente: $item" }
+          }
+          Write-Host 'Estrutura do runtime portátil validada.'
+
+      - name: Testar abertura do executável
+        shell: pwsh
+        run: |
+          $portable = (Resolve-Path 'build/compose/binaries/main/app/MonitorDeNoticias').Path
+          $exe = Join-Path $portable 'MonitorDeNoticias.exe'
+          $p = Start-Process -FilePath $exe -WorkingDirectory $portable -PassThru
+          Start-Sleep -Seconds 12
+          if ($p.HasExited) {
+            throw "O executável encerrou durante o teste de inicialização. ExitCode=$($p.ExitCode)"
+          }
+          Stop-Process -Id $p.Id -Force
+          Write-Host 'Executável iniciou usando o runtime embutido.'
+
+      - name: Listar conteúdo portátil
         if: always()
         shell: pwsh
         run: |
-          if (Test-Path 'build/compose/binaries') {
-            Get-ChildItem -Path 'build/compose/binaries' -Recurse -File | Select-Object FullName, Length
-          } else {
-            Write-Host 'Pasta build/compose/binaries ainda não existe.'
+          $portable = 'build/compose/binaries/main/app/MonitorDeNoticias'
+          if (Test-Path $portable) {
+            Get-ChildItem -Path $portable -Recurse -File | Select-Object FullName, Length
           }
 
-      - name: Publicar executáveis Windows
+      # Não criamos um ZIP manual aqui. O GitHub gera UM único ZIP do artifact.
+      - name: Publicar Windows Portable
         uses: actions/upload-artifact@v4
         with:
-          name: MonitorDeNoticias-Windows
-          path: build/compose/binaries/**
+          name: MonitorDeNoticias-Portable-Windows
+          path: build/compose/binaries/main/app/MonitorDeNoticias/**
           if-no-files-found: error
           retention-days: 30
-v
